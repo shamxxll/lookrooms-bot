@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: lookrooms-bot
+    env: python
+    buildCommand: ""
+    startCommand: python main.py
+    envVars:
+      - key: API_TOKEN
+        value: 8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E
