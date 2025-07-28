@@ -17,9 +17,11 @@ SPREADSHEET_ID = '1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0'
 
 # ==== Авторизация Google Sheets ====
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+JSON_PATH = '/etc/secrets/credentials.json'
 creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_PATH, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+
 
 # ==== FSM состояния ====
 class Form(StatesGroup):
