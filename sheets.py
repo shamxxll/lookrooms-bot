@@ -35,7 +35,7 @@ def generate_pdf_report():
     rows = [row for row in data[1:] if len(row) >= len(headers) and row[-1].strip() == today]
 
     pdf = PDF()
-    pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
     pdf.set_font("DejaVu", "", 11)
     pdf.add_page()
 
