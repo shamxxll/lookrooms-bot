@@ -1,5 +1,4 @@
-﻿# telegram_bot.py
-from aiogram import Bot, Dispatcher, types
+﻿from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
@@ -12,16 +11,14 @@ from sheets import generate_pdf_report
 import os
 
 API_TOKEN = '8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E'
-JSON_PATH = 'credentials.json'
+JSON_PATH = '/etc/secrets/credentials.json'
 SPREADSHEET_ID = '1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0'
 
 # ==== Авторизация Google Sheets ====
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-JSON_PATH = '/etc/secrets/credentials.json'
 creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_PATH, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-
 
 # ==== FSM состояния ====
 class Form(StatesGroup):
@@ -126,10 +123,23 @@ async def send_daily_report(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка при формировании отчёта: {e}")
 
-# ==== Запуск ====
+# ==== Healthcheck-сервер и запуск ====
 if __name__ == '__main__':
+    # Healthcheck на порту 8080 (для Render)
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import threading
+
+    class HealthCheckHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Bot is running.')
+
+    def run_health_server():
+        server = HTTPServer(('0.0.0.0', 8080), HealthCheckHandler)
+        server.serve_forever()
+
+    threading.Thread(target=run_health_server, daemon=True).start()
+
+    # Запуск бота
     executor.start_polling(dp, skip_updates=True)
-    from sheets import generate_pdf_report
-
-
-
