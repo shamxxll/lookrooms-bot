@@ -2,25 +2,31 @@
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.utils import executor
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from sheets import generate_pdf_report
 import os
 
+# ==== Настройки ====
 API_TOKEN = '8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E'
+WEBHOOK_PATH = "/webhook"
+WEBAPP_PORT = int(os.getenv("PORT", 8080))
+WEBHOOK_URL = f"https://lookrooms-bot-1.onrender.com{WEBHOOK_PATH}"
+
 JSON_PATH = '/etc/secrets/credentials.json'
 SPREADSHEET_ID = '1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0'
 
-# ==== Авторизация Google Sheets ====
+# ==== Google Sheets ====
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_PATH, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 
-# ==== FSM состояния ====
+# ==== FSM ====
 class Form(StatesGroup):
     address = State()
     amount = State()
@@ -29,18 +35,14 @@ class Form(StatesGroup):
     employee = State()
     pay_date = State()
 
-# ==== Бот и диспетчер ====
+# ==== Бот ====
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
 
-# ==== Кнопка старта ====
+# ==== Кнопки ====
 start_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-start_kb.add(
-    KeyboardButton("💰 Внести сумму"),
-    KeyboardButton("📊 Отчёт за день")
-)
+start_kb.add(KeyboardButton("💰 Внести сумму"), KeyboardButton("📊 Отчёт за день"))
 
-# ==== Кнопки выбора квартиры ====
 apartments = [
     "(327) 2-ой Вольный переулок 11",
     "(454) 2-ой Вольный переулок 11",
@@ -52,12 +54,11 @@ kb_apts = ReplyKeyboardMarkup(resize_keyboard=True)
 for apt in apartments:
     kb_apts.add(KeyboardButton(apt))
 
-# ==== /start ====
+# ==== Хендлеры ====
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     await message.answer("Привет! Нажми “💰 Внести сумму”, чтобы начать.", reply_markup=start_kb)
 
-# ==== Обработка "Внести сумму" ====
 @dp.message_handler(lambda msg: msg.text == "💰 Внести сумму")
 async def choose_apartment(message: types.Message):
     await Form.address.set()
@@ -113,7 +114,6 @@ async def save_to_sheet(message: types.Message, state: FSMContext):
     await message.answer("✅ Данные успешно сохранены!", reply_markup=start_kb)
     await state.finish()
 
-# ==== Обработка "📊 Отчёт за день" ====
 @dp.message_handler(lambda message: message.text == "📊 Отчёт за день")
 async def send_daily_report(message: types.Message):
     try:
@@ -123,23 +123,25 @@ async def send_daily_report(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка при формировании отчёта: {e}")
 
-# ==== Healthcheck-сервер и запуск ====
-if __name__ == '__main__':
-    # Healthcheck на порту 8080 (для Render)
-    from http.server import BaseHTTPRequestHandler, HTTPServer
-    import threading
+# ==== Webhook app ====
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL)
 
-    class HealthCheckHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Bot is running.')
+async def on_shutdown(app):
+    await bot.delete_webhook()
 
-    def run_health_server():
-        server = HTTPServer(('0.0.0.0', 8080), HealthCheckHandler)
-        server.serve_forever()
+app = web.Application()
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
-    threading.Thread(target=run_health_server, daemon=True).start()
+# ==== Healthcheck ====
+async def healthcheck(request):
+    return web.Response(text="✅ Bot is running")
 
-    # Запуск бота
-    executor.start_polling(dp, skip_updates=True)
+app.router.add_get("/healthz", healthcheck)
+
+if __name__ == "__main__":
+    setup_application(app, dp, bot=bot)
+    web.run_app(app, port=WEBAPP_PORT)
+
