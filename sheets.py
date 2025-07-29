@@ -21,7 +21,7 @@ def generate_pdf_report():
 
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+    pdf.add_font('DejaVu', '', os.path.join('fonts', 'DejaVuSans.ttf'), uni=True)
     pdf.set_font("DejaVu", size=12)
 
     pdf.set_title(f"Отчёт за {today}")
