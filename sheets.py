@@ -5,7 +5,7 @@ from datetime import datetime
 import os
 
 # Пути к файлам
-FONT_PATH = os.path.join(os.path.dirname(__file__), "DejaVuSans.ttf")
+FONT_PATH = os.path.join("fonts", "DejaVuSans.ttf")
 JSON_PATH = "/etc/secrets/credentials.json"
 SPREADSHEET_ID = "1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0"
 
@@ -21,7 +21,7 @@ def generate_pdf_report():
 
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font('DejaVu', '', FONT_PATH, uni=True)  # <-- исправленный путь
+    pdf.add_font('DejaVu', '', FONT_PATH, uni=True)
     pdf.set_font("DejaVu", size=12)
 
     pdf.set_title(f"Отчёт за {today}")
@@ -40,6 +40,6 @@ def generate_pdf_report():
         pdf.cell(200, 10, txt=f"📅 Дата оплаты: {record['Дата оплаты']}", ln=True)
         pdf.ln(10)
 
-    file_path = f"report_{today}.pdf"
+    file_path = "daily_report.pdf"
     pdf.output(file_path)
     return file_path
