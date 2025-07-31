@@ -11,6 +11,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from sheets import generate_pdf_report
 import os
 
+
 # ==== Настройки ====
 API_TOKEN = '8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E'
 WEBHOOK_PATH = "/webhook"
