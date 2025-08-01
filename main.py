@@ -16,7 +16,7 @@ from aiogram.types import (
 from sheets import generate_pdf_report
 
 
-BOT_TOKEN = os.getenv("BOT_TOKEN") or "твой_токен_здесь"
+BOT_TOKEN = os.getenv("8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E") or "твой_токен_здесь"
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
