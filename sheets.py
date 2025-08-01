@@ -6,7 +6,7 @@ import os
 
 # Пути к файлам
 FONT_PATH = os.path.join("fonts", "DejaVuSans.ttf")
-JSON_PATH = "/etc/secrets/<filename>"
+JSON_PATH = "/etc/secrets/credentials.json"
 SPREADSHEET_ID = "1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0"
 
 # Авторизация
