@@ -1,148 +1,139 @@
-﻿from aiogram import Bot, Dispatcher, types
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
+﻿import os
+import asyncio
 from datetime import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+
+from aiogram import Bot, Dispatcher, types
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    Message, CallbackQuery,
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    FSInputFile
+)
+
 from sheets import generate_pdf_report
-import os
 
 
-# ==== Настройки ====
-API_TOKEN = '8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E'
-WEBHOOK_PATH = "/webhook"
-WEBAPP_PORT = int(os.getenv("PORT", 8080))
-WEBHOOK_URL = f"https://lookrooms-bot-1.onrender.com{WEBHOOK_PATH}"
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "твой_токен_здесь"
 
-JSON_PATH = '/etc/secrets/credentials.json'
-SPREADSHEET_ID = '1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0'
+# Инициализация бота и диспетчера
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 
-# ==== Google Sheets ====
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_PATH, scope)
-client = gspread.authorize(creds)
-sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+# Стартовая клавиатура
+main_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="💰 Внести сумму")],
+        [KeyboardButton(text="📊 Отчёт за день")]
+    ],
+    resize_keyboard=True
+)
 
-# ==== FSM ====
-class Form(StatesGroup):
+# FSM-состояния
+class PaymentForm(StatesGroup):
     address = State()
-    amount = State()
-    purpose = State()
-    receipt = State()
+    amount_rs = State()
+    usage = State()
+    receipt_sum = State()
     employee = State()
     pay_date = State()
 
-# ==== Бот ====
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
 
-# ==== Кнопки ====
-start_kb = ReplyKeyboardMarkup(resize_keyboard=True)
-start_kb.add(KeyboardButton("💰 Внести сумму"), KeyboardButton("📊 Отчёт за день"))
+# Команда /start
+@dp.message(commands=["start"])
+async def cmd_start(message: Message, state: FSMContext):
+    await message.answer("👋 Привет! Выбери действие:", reply_markup=main_kb)
 
-apartments = [
-    "(327) 2-ой Вольный переулок 11",
-    "(454) 2-ой Вольный переулок 11",
-    "(457) 2-ой Вольный переулок 11",
-    "(475) 2-ой Вольный переулок 11",
-    "(309) Вольная 25с3"
-]
-kb_apts = ReplyKeyboardMarkup(resize_keyboard=True)
-for apt in apartments:
-    kb_apts.add(KeyboardButton(apt))
 
-# ==== Хендлеры ====
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    await message.answer("Привет! Нажми “💰 Внести сумму”, чтобы начать.", reply_markup=start_kb)
-
-@dp.message_handler(lambda msg: msg.text == "💰 Внести сумму")
-async def choose_apartment(message: types.Message):
-    await Form.address.set()
-    await message.answer("🏠 Выбери адрес квартиры:", reply_markup=kb_apts)
-
-@dp.message_handler(lambda msg: msg.text in apartments, state=Form.address)
-async def enter_amount(message: types.Message, state: FSMContext):
-    await state.update_data(address=message.text)
-    await Form.next()
-    await message.answer("💵 Введи сумму р/с:", reply_markup=types.ReplyKeyboardRemove())
-
-@dp.message_handler(state=Form.amount)
-async def enter_purpose(message: types.Message, state: FSMContext):
-    await state.update_data(amount=message.text)
-    await Form.next()
-    await message.answer("📅 Куда ушли деньги:")
-
-@dp.message_handler(state=Form.purpose)
-async def enter_receipt(message: types.Message, state: FSMContext):
-    await state.update_data(purpose=message.text)
-    await Form.next()
-    await message.answer("📈 Введи сумму чека:")
-
-@dp.message_handler(state=Form.receipt)
-async def enter_employee(message: types.Message, state: FSMContext):
-    await state.update_data(receipt=message.text)
-    await Form.next()
-    await message.answer("👤 Введи имя сотрудника:")
-
-@dp.message_handler(state=Form.employee)
-async def enter_pay_date(message: types.Message, state: FSMContext):
-    await state.update_data(employee=message.text)
-    await Form.next()
-    await message.answer("🗓️ Введи дату оплаты (например: 25.07.2025):")
-
-@dp.message_handler(state=Form.pay_date)
-async def save_to_sheet(message: types.Message, state: FSMContext):
-    await state.update_data(pay_date=message.text)
-    data = await state.get_data()
-    now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-
-    row = [
-        now,
-        data['address'],
-        data['amount'],
-        data['purpose'],
-        data['receipt'],
-        data['employee'],
-        data['pay_date']
-    ]
-
-    sheet.append_row(row, value_input_option='USER_ENTERED')
-    await message.answer("✅ Данные успешно сохранены!", reply_markup=start_kb)
-    await state.finish()
-
-@dp.message_handler(lambda message: message.text == "📊 Отчёт за день")
-async def send_daily_report(message: types.Message):
+# Обработка кнопки "📊 Отчёт за день"
+@dp.message(lambda msg: msg.text == "📊 Отчёт за день")
+async def handle_report(message: Message):
     try:
-        file_path = generate_pdf_report()
-        pdf_file = InputFile(file_path)
-        await bot.send_document(chat_id=message.chat.id, document=pdf_file, caption="📊 Отчёт за сегодня")
+        path = generate_pdf_report()
+        file = FSInputFile(path)
+        await message.answer_document(file, caption="📎 Вот отчёт за сегодня")
     except Exception as e:
         await message.answer(f"❌ Ошибка при формировании отчёта: {e}")
 
-# ==== Webhook app ====
-async def on_startup(app):
-    await bot.set_webhook(WEBHOOK_URL)
 
-async def on_shutdown(app):
-    await bot.delete_webhook()
+# Обработка кнопки "💰 Внести сумму"
+@dp.message(lambda msg: msg.text == "💰 Внести сумму")
+async def handle_start_payment(message: Message, state: FSMContext):
+    await message.answer("🏠 Введите адрес квартиры:")
+    await state.set_state(PaymentForm.address)
 
-app = web.Application()
-SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
-app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
 
-# ==== Healthcheck ====
-async def healthcheck(request):
-    return web.Response(text="✅ Bot is running")
+@dp.message(PaymentForm.address)
+async def handle_address(message: Message, state: FSMContext):
+    await state.update_data(address=message.text)
+    await message.answer("💰 Введите сумму р/с:")
+    await state.set_state(PaymentForm.amount_rs)
 
-app.router.add_get("/healthz", healthcheck)
 
+@dp.message(PaymentForm.amount_rs)
+async def handle_amount_rs(message: Message, state: FSMContext):
+    await state.update_data(amount_rs=message.text)
+    await message.answer("📌 Куда ушли деньги?")
+    await state.set_state(PaymentForm.usage)
+
+
+@dp.message(PaymentForm.usage)
+async def handle_usage(message: Message, state: FSMContext):
+    await state.update_data(usage=message.text)
+    await message.answer("🧾 Сумма чека:")
+    await state.set_state(PaymentForm.receipt_sum)
+
+
+@dp.message(PaymentForm.receipt_sum)
+async def handle_receipt_sum(message: Message, state: FSMContext):
+    await state.update_data(receipt_sum=message.text)
+    await message.answer("👤 Введите имя сотрудника:")
+    await state.set_state(PaymentForm.employee)
+
+
+@dp.message(PaymentForm.employee)
+async def handle_employee(message: Message, state: FSMContext):
+    await state.update_data(employee=message.text)
+    await message.answer("📅 Введите дату оплаты (ДД.ММ.ГГГГ):")
+    await state.set_state(PaymentForm.pay_date)
+
+
+@dp.message(PaymentForm.pay_date)
+async def handle_pay_date(message: Message, state: FSMContext):
+    data = await state.get_data()
+    pay_date = message.text
+
+    # Запись в Google Таблицу
+    try:
+        import gspread
+        from oauth2client.service_account import ServiceAccountCredentials
+
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key("1k9LnA_IShTjFzsmRdtFwjbT_wEGZ5u0IM4g3CB5XYW0").sheet1
+
+        sheet.append_row([
+            datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+            data["address"],
+            data["amount_rs"],
+            data["usage"],
+            data["receipt_sum"],
+            data["employee"],
+            pay_date
+        ])
+
+        await message.answer("✅ Данные успешно сохранены!", reply_markup=main_kb)
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при сохранении: {e}")
+
+    await state.clear()
+
+
+# Запуск бота
 if __name__ == "__main__":
-    setup_application(app, dp, bot=bot)
-    web.run_app(app, port=WEBAPP_PORT)
+    asyncio.run(dp.start_polling(bot))
+
 
