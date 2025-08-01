@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
@@ -18,8 +18,6 @@ from sheets import generate_pdf_report
 
 BOT_TOKEN = "8404119240:AAHvfgS8vh4j3OkTr73dLnFUUzYAcBSAw6E"
 
-
-# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -41,15 +39,13 @@ class PaymentForm(StatesGroup):
     employee = State()
     pay_date = State()
 
-
-# Команда /start
-@dp.message(commands=["start"])
+# Обработка команды /start
+@dp.message(F.text == "/start")
 async def cmd_start(message: Message, state: FSMContext):
     await message.answer("👋 Привет! Выбери действие:", reply_markup=main_kb)
 
-
 # Обработка кнопки "📊 Отчёт за день"
-@dp.message(lambda msg: msg.text == "📊 Отчёт за день")
+@dp.message(F.text == "📊 Отчёт за день")
 async def handle_report(message: Message):
     try:
         path = generate_pdf_report()
@@ -58,13 +54,11 @@ async def handle_report(message: Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка при формировании отчёта: {e}")
 
-
 # Обработка кнопки "💰 Внести сумму"
-@dp.message(lambda msg: msg.text == "💰 Внести сумму")
+@dp.message(F.text == "💰 Внести сумму")
 async def handle_start_payment(message: Message, state: FSMContext):
     await message.answer("🏠 Введите адрес квартиры:")
     await state.set_state(PaymentForm.address)
-
 
 @dp.message(PaymentForm.address)
 async def handle_address(message: Message, state: FSMContext):
@@ -72,13 +66,11 @@ async def handle_address(message: Message, state: FSMContext):
     await message.answer("💰 Введите сумму р/с:")
     await state.set_state(PaymentForm.amount_rs)
 
-
 @dp.message(PaymentForm.amount_rs)
 async def handle_amount_rs(message: Message, state: FSMContext):
     await state.update_data(amount_rs=message.text)
     await message.answer("📌 Куда ушли деньги?")
     await state.set_state(PaymentForm.usage)
-
 
 @dp.message(PaymentForm.usage)
 async def handle_usage(message: Message, state: FSMContext):
@@ -86,13 +78,11 @@ async def handle_usage(message: Message, state: FSMContext):
     await message.answer("🧾 Сумма чека:")
     await state.set_state(PaymentForm.receipt_sum)
 
-
 @dp.message(PaymentForm.receipt_sum)
 async def handle_receipt_sum(message: Message, state: FSMContext):
     await state.update_data(receipt_sum=message.text)
     await message.answer("👤 Введите имя сотрудника:")
     await state.set_state(PaymentForm.employee)
-
 
 @dp.message(PaymentForm.employee)
 async def handle_employee(message: Message, state: FSMContext):
@@ -100,13 +90,11 @@ async def handle_employee(message: Message, state: FSMContext):
     await message.answer("📅 Введите дату оплаты (ДД.ММ.ГГГГ):")
     await state.set_state(PaymentForm.pay_date)
 
-
 @dp.message(PaymentForm.pay_date)
 async def handle_pay_date(message: Message, state: FSMContext):
     data = await state.get_data()
     pay_date = message.text
 
-    # Запись в Google Таблицу
     try:
         import gspread
         from oauth2client.service_account import ServiceAccountCredentials
@@ -132,9 +120,6 @@ async def handle_pay_date(message: Message, state: FSMContext):
 
     await state.clear()
 
-
 # Запуск бота
 if __name__ == "__main__":
     asyncio.run(dp.start_polling(bot))
-
-
